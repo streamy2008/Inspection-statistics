@@ -84,15 +84,33 @@ function showToast(message) {
 
 // --- 模块 1：生成配网二维码 ---
 
+// 解决中文乱码问题
+function utf16to8(str) {
+  let out = "";
+  for (let i = 0; i < str.length; i++) {
+    let c = str.charCodeAt(i);
+    if ((c >= 0x0001) && (c <= 0x007F)) {
+      out += str.charAt(i);
+    } else if (c > 0x07FF) {
+      out += String.fromCharCode(0xE0 | ((c >> 12) & 0x0F));
+      out += String.fromCharCode(0x80 | ((c >>  6) & 0x3F));
+      out += String.fromCharCode(0x80 | ((c >>  0) & 0x3F));
+    } else {
+      out += String.fromCharCode(0xC0 | ((c >>  6) & 0x1F));
+      out += String.fromCharCode(0x80 | ((c >>  0) & 0x3F));
+    }
+  }
+  return out;
+}
+
 document.getElementById('btnGenerateQR').addEventListener('click', (e) => {
-  e.preventDefault(); // 防止某些情况下的默认行为
+  e.preventDefault(); 
   
-  // 移动端优化：点击生成按钮时主动收起软键盘，防止键盘遮挡二维码
   document.getElementById('ssid').blur();
   document.getElementById('password').blur();
 
-  if (typeof QRCode === 'undefined') {
-    showToast('二维码组件库正在加载，请稍候再试或刷新页面');
+  if (typeof QRious === 'undefined') {
+    showToast('组件加载失败，请点击底部"修复异常"');
     return;
   }
 
@@ -104,26 +122,44 @@ document.getElementById('btnGenerateQR').addEventListener('click', (e) => {
     return;
   }
   
-  // 标准 WiFi 二维码格式: WIFI:T:WPA;S:网名;P:密码;;
   const wifiString = `WIFI:T:WPA;S:${ssid};P:${password};;`;
+  
+  const container = document.getElementById('qrcode');
+  container.innerHTML = '<canvas id="qrcodeCanvas"></canvas>';
   const canvas = document.getElementById('qrcodeCanvas');
   
-  // 使用现代化的 qrcode 库生成二维码 (原生支持 UTF-8 中文)
-  QRCode.toCanvas(canvas, wifiString, {
-    width: 200,
-    margin: 2,
-    color: {
-      dark: "#000000",
-      light: "#ffffff"
-    }
-  }, function (error) {
-    if (error) {
-      console.error('二维码生成失败:', error);
-      showToast('二维码生成失败，请检查输入内容');
-    } else {
-      showToast('二维码生成成功，请使用中继器扫描');
-    }
-  });
+  try {
+    new QRious({
+      element: canvas,
+      value: utf16to8(wifiString),
+      size: 200,
+      level: 'H'
+    });
+    showToast('二维码生成成功，请使用中继器扫描');
+  } catch (err) {
+    console.error('二维码生成失败:', err);
+    showToast('二维码生成失败: ' + err.message);
+  }
+});
+
+// 紧急修复：清除 PWA 缓存
+document.getElementById('btnClearCache').addEventListener('click', () => {
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.getRegistrations().then(function(registrations) {
+      for(let registration of registrations) {
+        registration.unregister();
+      }
+    });
+  }
+  if ('caches' in window) {
+    caches.keys().then(keys => {
+      keys.forEach(key => caches.delete(key));
+    });
+  }
+  showToast('缓存已清除，正在重启应用...');
+  setTimeout(() => {
+    window.location.href = window.location.href.split('?')[0] + '?t=' + Date.now();
+  }, 1500);
 });
 
 // --- 模块 2：模拟设备日志拉取与核心计费算法 ---

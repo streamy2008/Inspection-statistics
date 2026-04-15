@@ -1,13 +1,13 @@
 // sw.js
 
-const CACHE_NAME = 'medical-app-cache-v4';
+const CACHE_NAME = 'medical-app-cache-v5';
 const URLS_TO_CACHE = [
   '/',
   '/index.html',
-  '/app.js?v=4',
+  '/app.js?v=5',
   '/manifest.json',
   '/icon.svg',
-  'https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js'
+  'https://cdn.staticfile.net/qrious/4.0.2/qrious.min.js'
 ];
 
 // 1. 安装阶段：缓存静态资源，实现离线访问

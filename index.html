@@ -297,16 +297,19 @@
   </main>
 
   <footer>
-      <div>当前版本: v2.4.0 (PWA Enabled)</div>
-      <div>IndexedDB 缓存就绪</div>
+      <div>当前版本: v5.0 (PWA)</div>
+      <div style="display: flex; gap: 12px; align-items: center;">
+          <span>IndexedDB 就绪</span>
+          <button id="btnClearCache" style="background: none; border: none; color: var(--primary); font-size: 12px; cursor: pointer; text-decoration: underline; padding: 0; width: auto; margin: 0;">修复异常(清缓存)</button>
+      </div>
   </footer>
 
   <div id="toast" class="toast">提示信息</div>
 
-  <!-- 引入现代化的 qrcode 库，原生支持中文 UTF-8，兼容性极佳 -->
-  <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
+  <!-- 使用国内极速 CDN 引入 QRious 库 -->
+  <script src="https://cdn.staticfile.net/qrious/4.0.2/qrious.min.js"></script>
   <!-- 引入主逻辑脚本，增加版本号强制刷新 -->
-  <script src="/app.js?v=4"></script>
+  <script src="/app.js?v=5"></script>
 </body>
 </html>
 
