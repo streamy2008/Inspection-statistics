@@ -138,7 +138,18 @@ document.getElementById('btnScanQR').addEventListener('click', async (e) => {
     await html5QrCode.start({ facingMode: "environment" }, config, qrCodeSuccessCallback);
   } catch (err) {
     console.error("启动相机失败:", err);
-    showToast('无法启动相机，请检查浏览器权限设置');
+    
+    let errorMsg = '无法启动相机，请检查设备或浏览器权限';
+    const errString = String(err);
+    
+    if (errString.includes('NotAllowedError') || errString.includes('Permission denied')) {
+      errorMsg = '相机权限被拒绝！请在浏览器设置中允许访问相机。如果您在预览窗口中，请尝试点击右上角在新标签页打开。';
+      alert('相机权限被拒绝：\n\n1. 请确保您已允许浏览器访问相机。\n2. 苹果 iOS 用户请在“设置 -> Safari浏览器 -> 相机”中选择“允许”。\n3. 如果您在内嵌窗口中，请尝试在独立的浏览器标签页中打开本网页。');
+    } else if (errString.includes('NotFoundError') || errString.includes('Requested device not found')) {
+      errorMsg = '未检测到相机设备，请确保您的设备有可用的摄像头。';
+    }
+
+    showToast(errorMsg);
     stopScanner();
   }
 });
@@ -178,11 +189,6 @@ document.getElementById('btnGenerateQR').addEventListener('click', (e) => {
   document.getElementById('ssid').blur();
   document.getElementById('password').blur();
 
-  if (typeof qrcode === 'undefined') {
-    showToast('组件加载失败，请检查网络或点击底部"修复异常"');
-    return;
-  }
-
   const ssid = document.getElementById('ssid').value.trim();
   const password = document.getElementById('password').value.trim();
   
@@ -193,32 +199,56 @@ document.getElementById('btnGenerateQR').addEventListener('click', (e) => {
   
   const wifiString = `WIFI:T:WPA;S:${ssid};P:${password};;`;
   const container = document.getElementById('qrcode');
-  container.innerHTML = ''; // 清空
+  container.innerHTML = '<div style="text-align:center; color:var(--text-muted); padding: 20px;">正在生成二维码...</div>';
   
-  try {
-    // 使用 qrcode-generator 生成纯 Base64 图片，彻底绕过 iOS Canvas 兼容性问题
-    const qr = qrcode(0, 'H'); // 0 = 自动计算大小, H = 最高容错率
-    qr.addData(utf16to8(wifiString));
-    qr.make();
-    
-    // 生成 img 标签 (模块大小: 6, 边距: 2)
-    container.innerHTML = qr.createImgTag(6, 2);
-    
-    // 调整生成的图片样式以适应容器
-    const imgElement = container.querySelector('img');
-    if (imgElement) {
-      imgElement.style.display = 'block';
-      imgElement.style.margin = '0 auto';
-      imgElement.style.maxWidth = '100%';
-      imgElement.style.height = 'auto';
-      imgElement.style.borderRadius = '4px';
+  // 终极方案：双引擎生成 (优先使用云端 API，失败则降级使用本地 JS)
+  // 这样可以 100% 绕过 iOS 本地 JS 执行和 Canvas 渲染的各种诡异 Bug
+  const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(wifiString)}`;
+  
+  const img = new Image();
+  img.crossOrigin = 'Anonymous';
+  
+  img.onload = () => {
+    container.innerHTML = '';
+    img.style.display = 'block';
+    img.style.margin = '0 auto';
+    img.style.width = '200px';
+    img.style.height = '200px';
+    img.style.borderRadius = '8px';
+    container.appendChild(img);
+    showToast('二维码生成成功');
+  };
+  
+  img.onerror = () => {
+    console.warn('云端生成失败，尝试使用本地离线引擎...');
+    try {
+      if (typeof qrcode !== 'undefined') {
+        const qr = qrcode(0, 'H'); 
+        qr.addData(utf16to8(wifiString));
+        qr.make();
+        container.innerHTML = qr.createImgTag(6, 2);
+        
+        const localImg = container.querySelector('img');
+        if (localImg) {
+          localImg.style.display = 'block';
+          localImg.style.margin = '0 auto';
+          localImg.style.maxWidth = '100%';
+          localImg.style.height = 'auto';
+        }
+        showToast('已使用离线引擎生成二维码');
+      } else {
+        container.innerHTML = '<div style="color:red; text-align:center; padding: 20px;">生成失败，请检查网络</div>';
+        showToast('二维码组件加载失败');
+      }
+    } catch (err) {
+      console.error('本地生成也失败:', err);
+      container.innerHTML = `<div style="color:red; text-align:center; padding: 20px;">生成异常: ${err.message}</div>`;
+      showToast('生成异常，请重试');
     }
-
-    showToast('二维码生成成功，请使用中继器扫描');
-  } catch (err) {
-    console.error('二维码生成失败:', err);
-    showToast('二维码生成失败: ' + err.message);
-  }
+  };
+  
+  // 触发图片加载
+  img.src = qrUrl;
 });
 
 // 紧急修复：清除 PWA 缓存
