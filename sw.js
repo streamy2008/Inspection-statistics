@@ -1,72 +1,51 @@
-// sw.js
+const CACHE_NAME = 'medical-terminal-v2';
+const ASSETS = [
+    '/',
+    '/index.html',
+    '/app.js',
+    '/manifest.json',
+    'https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js'
+];
 
-// 强制清理缓存的 Service Worker (破坏 PWA 缓存陷阱)
+// 安装阶段：缓存核心静态资源
 self.addEventListener('install', event => {
-  self.skipWaiting();
+    event.waitUntil(
+        caches.open(CACHE_NAME).then(cache => cache.addAll(ASSETS))
+    );
+    self.skipWaiting();
 });
 
+// 激活阶段：清理旧缓存
 self.addEventListener('activate', event => {
-  event.waitUntil(
-    caches.keys().then(cacheNames => {
-      return Promise.all(
-        cacheNames.map(cacheName => {
-          console.log('[Service Worker] 删除废弃缓存:', cacheName);
-          return caches.delete(cacheName);
-        })
-      );
-    })
-  );
-  self.clients.claim();
+    event.waitUntil(
+        caches.keys().then(keys => Promise.all(
+            keys.map(key => {
+                if (key !== CACHE_NAME) return caches.delete(key);
+            })
+        ))
+    );
+    self.clients.claim();
 });
 
+// 拦截请求：离线优先策略 (Cache First, fallback to Network)
+// 确保在无信号的手术室环境下能够秒开页面
 self.addEventListener('fetch', event => {
-  // 直接走网络，不再拦截和使用任何缓存
-  return;
-});
+    // 仅处理 GET 请求
+    if (event.request.method !== 'GET') return;
 
-// 4. 监听后台同步事件 (Background Sync)
-// 补充说明：在 app.js 中我们已经通过监听 window 的 'online' 事件实现了同步逻辑。
-// 这里保留 sync 事件监听是为了满足 PWA 的最佳实践。如果在 SW 中执行，需要原生操作 IndexedDB。
-self.addEventListener('sync', event => {
-  if (event.tag === 'sync-reports') {
-    console.log('[Service Worker] 监听到后台同步事件: sync-reports');
-    event.waitUntil(syncReportsFromIndexedDB());
-  }
+    event.respondWith(
+        caches.match(event.request).then(cachedResponse => {
+            // 如果命中缓存，直接返回；否则发起网络请求
+            return cachedResponse || fetch(event.request).then(response => {
+                // 将新请求到的资源也加入缓存
+                return caches.open(CACHE_NAME).then(cache => {
+                    cache.put(event.request, response.clone());
+                    return response;
+                });
+            });
+        }).catch(() => {
+            // 极端离线情况下的容错处理
+            console.log('网络不可用且无缓存:', event.request.url);
+        })
+    );
 });
-
-// 在 Service Worker 中读取 IndexedDB 并执行同步
-async function syncReportsFromIndexedDB() {
-  return new Promise((resolve, reject) => {
-    const request = indexedDB.open('MedicalAppDB', 1);
-    
-    request.onsuccess = (event) => {
-      const db = event.target.result;
-      if (!db.objectStoreNames.contains('syncQueue')) {
-        resolve();
-        return;
-      }
-      
-      const transaction = db.transaction('syncQueue', 'readwrite');
-      const store = transaction.objectStore('syncQueue');
-      const getAllRequest = store.getAll();
-      
-      getAllRequest.onsuccess = async () => {
-        const queue = getAllRequest.result;
-        if (queue && queue.length > 0) {
-          for (const item of queue) {
-            // 模拟上传
-            console.log('[Service Worker] 离线数据后台同步成功:', item);
-            // 上传成功后删除本地记录
-            store.delete(item.id);
-          }
-          console.log('[Service Worker] 所有离线数据后台同步完成');
-        }
-        resolve();
-      };
-      
-      getAllRequest.onerror = () => reject(getAllRequest.error);
-    };
-    
-    request.onerror = () => reject(request.error);
-  });
-}

@@ -1,430 +1,295 @@
-// app.js
-
 // ==========================================
-// 0. 强制注销 Service Worker (破坏 PWA 缓存陷阱)
+// 0. PWA Service Worker 注册
 // ==========================================
 if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.getRegistrations().then(function(registrations) {
-    for(let registration of registrations) {
-      registration.unregister();
-      console.log('ServiceWorker 已强制注销');
-    }
-  });
-}
-if ('caches' in window) {
-  caches.keys().then(keys => {
-    keys.forEach(key => caches.delete(key));
-  });
+    window.addEventListener('load', () => {
+        navigator.serviceWorker.register('/sw.js').catch(err => console.error('SW 注册失败:', err));
+    });
 }
 
 // ==========================================
-// 2. IndexedDB 封装 (本地数据持久化)
+// 1. IndexedDB 离线存储封装
 // ==========================================
-const DB_NAME = 'MedicalAppDB';
+const DB_NAME = 'MedicalTerminalDB';
 const STORE_NAME = 'syncQueue';
 
+// 打开或创建 IndexedDB 数据库
 function openDB() {
-  return new Promise((resolve, reject) => {
-    const request = indexedDB.open(DB_NAME, 1);
-    request.onupgradeneeded = (event) => {
-      const db = event.target.result;
-      if (!db.objectStoreNames.contains(STORE_NAME)) {
-        db.createObjectStore(STORE_NAME, { keyPath: 'id', autoIncrement: true });
-      }
-    };
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error);
-  });
+    return new Promise((resolve, reject) => {
+        const request = indexedDB.open(DB_NAME, 1);
+        request.onupgradeneeded = (e) => {
+            const db = e.target.result;
+            if (!db.objectStoreNames.contains(STORE_NAME)) {
+                db.createObjectStore(STORE_NAME, { keyPath: 'id', autoIncrement: true });
+            }
+        };
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error);
+    });
 }
 
-async function saveToSyncQueue(data) {
-  const db = await openDB();
-  return new Promise((resolve, reject) => {
-    const transaction = db.transaction(STORE_NAME, 'readwrite');
-    const store = transaction.objectStore(STORE_NAME);
-    const request = store.add(data);
-    request.onsuccess = () => resolve();
-    request.onerror = () => reject(request.error);
-  });
+// 将上报数据存入离线队列
+async function saveToQueue(data) {
+    const db = await openDB();
+    return new Promise((resolve, reject) => {
+        const tx = db.transaction(STORE_NAME, 'readwrite');
+        tx.objectStore(STORE_NAME).add(data);
+        tx.oncomplete = () => { updateQueueCount(); resolve(); };
+        tx.onerror = () => reject(tx.error);
+    });
 }
 
-async function getSyncQueue() {
-  const db = await openDB();
-  return new Promise((resolve, reject) => {
-    const transaction = db.transaction(STORE_NAME, 'readonly');
-    const store = transaction.objectStore(STORE_NAME);
-    const request = store.getAll();
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error);
-  });
+// 获取所有待同步的离线数据
+async function getQueue() {
+    const db = await openDB();
+    return new Promise((resolve, reject) => {
+        const tx = db.transaction(STORE_NAME, 'readonly');
+        const req = tx.objectStore(STORE_NAME).getAll();
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => reject(req.error);
+    });
 }
 
-async function clearSyncItem(id) {
-  const db = await openDB();
-  return new Promise((resolve, reject) => {
-    const transaction = db.transaction(STORE_NAME, 'readwrite');
-    const store = transaction.objectStore(STORE_NAME);
-    const request = store.delete(id);
-    request.onsuccess = () => resolve();
-    request.onerror = () => reject(request.error);
-  });
+// 删除已同步的数据
+async function clearItem(id) {
+    const db = await openDB();
+    return new Promise((resolve, reject) => {
+        const tx = db.transaction(STORE_NAME, 'readwrite');
+        tx.objectStore(STORE_NAME).delete(id);
+        tx.oncomplete = () => { updateQueueCount(); resolve(); };
+        tx.onerror = () => reject(tx.error);
+    });
+}
+
+// 更新界面上的队列数量显示
+async function updateQueueCount() {
+    try {
+        const queue = await getQueue();
+        document.getElementById('queueCount').innerText = queue.length;
+    } catch (e) {}
 }
 
 // ==========================================
-// 3. UI 交互与核心业务逻辑
+// 2. UI 交互与工具函数
 // ==========================================
-
-// 简易 Toast 提示
-function showToast(message) {
-  const toast = document.getElementById('toast');
-  toast.textContent = message;
-  toast.style.display = 'block';
-  setTimeout(() => {
-    toast.style.display = 'none';
-  }, 3000);
+function showToast(msg) {
+    const toast = document.getElementById('toast');
+    toast.innerText = msg;
+    toast.style.display = 'block';
+    setTimeout(() => toast.style.display = 'none', 3000);
 }
 
-// --- 模块 1：生成配网二维码 & 扫码识别 ---
-
-// 扫码识别逻辑
-let html5QrCode;
-
-document.getElementById('btnScanQR').addEventListener('click', async (e) => {
-  e.preventDefault();
-  
-  if (typeof Html5Qrcode === 'undefined') {
-    showToast('扫码组件加载中，请稍候再试');
-    return;
-  }
-
-  const scannerModal = document.getElementById('scannerModal');
-  scannerModal.style.display = 'flex';
-
-  if (!html5QrCode) {
-    html5QrCode = new Html5Qrcode("reader");
-  }
-
-  const qrCodeSuccessCallback = (decodedText, decodedResult) => {
-    console.log(`Scan result: ${decodedText}`);
-    
-    // 解析标准的 WIFI 二维码格式: WIFI:T:WPA;S:MySSID;P:MyPass;;
-    if (decodedText.toUpperCase().startsWith('WIFI:')) {
-      // 提取 SSID
-      const ssidMatch = decodedText.match(/S:([^;]+);/);
-      // 提取 Password
-      const passMatch = decodedText.match(/P:([^;]+);/);
-      
-      if (ssidMatch && ssidMatch[1]) {
-        document.getElementById('ssid').value = ssidMatch[1];
-      }
-      if (passMatch && passMatch[1]) {
-        document.getElementById('password').value = passMatch[1];
-      } else {
-        document.getElementById('password').value = ''; // 如果没有密码则清空
-      }
-      
-      showToast('扫码成功，已自动填充');
-    } else {
-      showToast('未识别到标准的WiFi二维码格式');
-    }
-    
-    stopScanner();
-  };
-
-  const config = { fps: 10, qrbox: { width: 250, height: 250 } };
-
-  try {
-    // 优先使用后置摄像头
-    await html5QrCode.start({ facingMode: "environment" }, config, qrCodeSuccessCallback);
-  } catch (err) {
-    console.error("启动相机失败:", err);
-    
-    let errorMsg = '无法启动相机，请检查设备或浏览器权限';
-    const errString = String(err);
-    
-    if (errString.includes('NotAllowedError') || errString.includes('Permission denied')) {
-      errorMsg = '相机权限被拒绝！请在浏览器设置中允许访问相机。如果您在预览窗口中，请尝试点击右上角在新标签页打开。';
-      alert('相机权限被拒绝：\n\n1. 请确保您已允许浏览器访问相机。\n2. 苹果 iOS 用户请在“设置 -> Safari浏览器 -> 相机”中选择“允许”。\n3. 如果您在内嵌窗口中，请尝试在独立的浏览器标签页中打开本网页。');
-    } else if (errString.includes('NotFoundError') || errString.includes('Requested device not found')) {
-      errorMsg = '未检测到相机设备，请确保您的设备有可用的摄像头。';
-    }
-
-    showToast(errorMsg);
-    stopScanner();
-  }
-});
-
-document.getElementById('btnCloseScanner').addEventListener('click', stopScanner);
-
-function stopScanner() {
-  const scannerModal = document.getElementById('scannerModal');
-  scannerModal.style.display = 'none';
-  if (html5QrCode && html5QrCode.isScanning) {
-    html5QrCode.stop().catch(err => console.error("停止相机失败", err));
-  }
-}
-
-// 解决中文乱码问题
+// 解决 qrcode.js 中文乱码问题
 function utf16to8(str) {
-  let out = "";
-  for (let i = 0; i < str.length; i++) {
-    let c = str.charCodeAt(i);
-    if ((c >= 0x0001) && (c <= 0x007F)) {
-      out += str.charAt(i);
-    } else if (c > 0x07FF) {
-      out += String.fromCharCode(0xE0 | ((c >> 12) & 0x0F));
-      out += String.fromCharCode(0x80 | ((c >>  6) & 0x3F));
-      out += String.fromCharCode(0x80 | ((c >>  0) & 0x3F));
-    } else {
-      out += String.fromCharCode(0xC0 | ((c >>  6) & 0x1F));
-      out += String.fromCharCode(0x80 | ((c >>  0) & 0x3F));
+    let out = "";
+    for (let i = 0; i < str.length; i++) {
+        let c = str.charCodeAt(i);
+        if ((c >= 0x0001) && (c <= 0x007F)) {
+            out += str.charAt(i);
+        } else if (c > 0x07FF) {
+            out += String.fromCharCode(0xE0 | ((c >> 12) & 0x0F));
+            out += String.fromCharCode(0x80 | ((c >>  6) & 0x3F));
+            out += String.fromCharCode(0x80 | ((c >>  0) & 0x3F));
+        } else {
+            out += String.fromCharCode(0xC0 | ((c >>  6) & 0x1F));
+            out += String.fromCharCode(0x80 | ((c >>  0) & 0x3F));
+        }
     }
-  }
-  return out;
+    return out;
 }
 
-document.getElementById('btnGenerateQR').addEventListener('click', (e) => {
-  e.preventDefault(); 
-  
-  // 收起软键盘
-  document.getElementById('ssid').blur();
-  document.getElementById('password').blur();
+// --- 模块 1：离线配网 ---
+document.getElementById('btnGenerateQR').addEventListener('click', () => {
+    // 收起软键盘
+    document.getElementById('ssid').blur();
+    document.getElementById('password').blur();
 
-  const ssid = document.getElementById('ssid').value.trim();
-  const password = document.getElementById('password').value.trim();
-  
-  if (!ssid) {
-    showToast('请输入手机热点名称(SSID)');
-    return;
-  }
-  
-  // 拼接标准的 WiFi 二维码字符串
-  const wifiString = `WIFI:T:WPA;S:${ssid};P:${password};;`;
-  const container = document.getElementById('qrcode');
-  
-  // 清空之前的二维码
-  container.innerHTML = '';
-  
-  try {
-    // 调用 QRCode.js 纯本地离线生成
-    new QRCode(container, {
-      text: wifiString,
-      width: 200,
-      height: 200,
-      colorDark : "#000000",
-      colorLight : "#ffffff",
-      correctLevel : QRCode.CorrectLevel.H // 高容错率，确保中继器容易扫码
-    });
+    const ssid = document.getElementById('ssid').value.trim();
+    const password = document.getElementById('password').value.trim();
     
-    // 居中显示优化
-    const qrImage = container.querySelector('img');
-    const qrCanvas = container.querySelector('canvas');
-    if (qrImage) {
-      qrImage.style.margin = "0 auto";
-      qrImage.style.borderRadius = "8px";
-    }
-    if (qrCanvas) {
-      qrCanvas.style.margin = "0 auto";
-      qrCanvas.style.borderRadius = "8px";
-    }
+    if (!ssid) return showToast('请输入手机热点名称(SSID)');
+    
+    const wifiString = `WIFI:T:WPA;S:${ssid};P:${password};;`;
+    const container = document.getElementById('qrcode');
+    container.innerHTML = ''; 
+    
+    if (typeof QRCode === 'undefined') return showToast('二维码库加载失败');
 
-    showToast('二维码已生成 (纯离线)');
-  } catch (err) {
-    console.error('二维码生成失败:', err);
-    container.innerHTML = `<div style="color:red; text-align:center; padding: 20px;">生成失败: 请检查网络库是否加载</div>`;
-    showToast('二维码组件初始化失败');
-  }
+    try {
+        // 纯本地离线生成二维码
+        new QRCode(container, {
+            text: utf16to8(wifiString),
+            width: 200,
+            height: 200,
+            colorDark : "#000000",
+            colorLight : "#ffffff",
+            correctLevel : QRCode.CorrectLevel.H
+        });
+        
+        // 居中优化
+        setTimeout(() => {
+            const children = container.children;
+            for (let i = 0; i < children.length; i++) {
+                children[i].style.margin = '0 auto';
+                children[i].style.display = 'block';
+            }
+        }, 50);
+
+        showToast('配网二维码已生成');
+    } catch (err) {
+        showToast('生成失败: ' + err.message);
+    }
 });
 
-// 紧急修复：清除 PWA 缓存
-document.getElementById('btnClearCache').addEventListener('click', () => {
-  if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.getRegistrations().then(function(registrations) {
-      for(let registration of registrations) {
-        registration.unregister();
-      }
-    });
-  }
-  if ('caches' in window) {
-    caches.keys().then(keys => {
-      keys.forEach(key => caches.delete(key));
-    });
-  }
-  showToast('缓存已清除，正在重启应用...');
-  setTimeout(() => {
-    window.location.href = window.location.href.split('?')[0] + '?t=' + Date.now();
-  }, 1500);
-});
+// --- 模块 2：计费算法与商业预测 ---
+let currentValidSNs = []; // 暂存当前有效的 SN 列表
 
-// --- 模块 2：模拟设备日志拉取与核心计费算法 ---
-let currentValidCount = 0;
-let currentValidSnList = [];
+// 模拟拉取设备日志
+function mockFetchDeviceLogs() {
+    const now = Date.now();
+    const oneDay = 24 * 60 * 60 * 1000;
+    const oneMin = 60 * 1000;
+    return [
+        // SN1: 有效 (时间差 15 分钟，最近 30 天内)
+        { sn: 'SN-1001', timestamp: now - 5 * oneDay },
+        { sn: 'SN-1001', timestamp: now - 5 * oneDay + 15 * oneMin },
+        // SN2: 无效 (时间差仅 5 分钟，不满足 >= 10分钟)
+        { sn: 'SN-1002', timestamp: now - 2 * oneDay },
+        { sn: 'SN-1002', timestamp: now - 2 * oneDay + 5 * oneMin },
+        // SN3: 无效 (最后一条时间在 40 天前，不满足最近 30 天内)
+        { sn: 'SN-1003', timestamp: now - 40 * oneDay },
+        { sn: 'SN-1003', timestamp: now - 40 * oneDay + 20 * oneMin },
+        // SN4: 有效 (时间差 2 小时，今天)
+        { sn: 'SN-1004', timestamp: now - 2 * 60 * oneMin },
+        { sn: 'SN-1004', timestamp: now },
+    ];
+}
 
 document.getElementById('btnFetchData').addEventListener('click', () => {
-  showToast('正在从中继器拉取数据...');
-  
-  // 模拟局域网 Fetch 请求延迟
-  setTimeout(() => {
-    const mockData = generateMockData();
-    processDeviceData(mockData);
-  }, 800);
-});
-
-// 模拟生成中继器日志数据
-function generateMockData() {
-  const now = Date.now();
-  const tenMins = 10 * 60 * 1000;
-  
-  return [
-    // SN_001: 持续时间超过 10 分钟 (有效耗材)
-    { sn: 'SN_001', timestamp: now - tenMins - 5000, value: 36.5 },
-    { sn: 'SN_001', timestamp: now - 5000, value: 36.6 },
-    { sn: 'SN_001', timestamp: now, value: 36.6 },
+    const logs = mockFetchDeviceLogs();
     
-    // SN_002: 持续时间不足 10 分钟 (无效耗材)
-    { sn: 'SN_002', timestamp: now - 5 * 60 * 1000, value: 36.2 },
-    { sn: 'SN_002', timestamp: now, value: 36.3 },
-    
-    // SN_003: 持续时间正好 10 分钟 (有效耗材)
-    { sn: 'SN_003', timestamp: now - tenMins, value: 37.0 },
-    { sn: 'SN_003', timestamp: now, value: 37.1 },
-    
-    // SN_004: 只有一条数据 (无效耗材)
-    { sn: 'SN_004', timestamp: now, value: 36.5 }
-  ];
-}
-
-// 核心计费算法
-function processDeviceData(data) {
-  // 1. 按 SN 号进行数据分组
-  const groupedData = {};
-  data.forEach(item => {
-    if (!groupedData[item.sn]) {
-      groupedData[item.sn] = [];
-    }
-    groupedData[item.sn].push(item.timestamp);
-  });
-  
-  const validSnList = [];
-  
-  // 2. 筛选时间差 >= 10分钟的 SN 号
-  for (const sn in groupedData) {
-    const timestamps = groupedData[sn];
-    if (timestamps.length >= 2) {
-      const minTime = Math.min(...timestamps);
-      const maxTime = Math.max(...timestamps);
-      // 判断最后一条减去第一条是否 >= 10分钟 (600000毫秒)
-      if (maxTime - minTime >= 10 * 60 * 1000) { 
-        validSnList.push(sn);
-      }
-    }
-  }
-  
-  currentValidCount = validSnList.length;
-  currentValidSnList = validSnList;
-  
-  // 3. 更新 UI 展示结算结果
-  document.getElementById('validCount').textContent = currentValidCount;
-  const ul = document.getElementById('validSnList');
-  ul.innerHTML = '';
-  
-  if (validSnList.length === 0) {
-    const li = document.createElement('li');
-    li.textContent = '暂无有效耗材';
-    li.style.color = '#8E8E93';
-    ul.appendChild(li);
-  } else {
-    validSnList.forEach(sn => {
-      const li = document.createElement('li');
-      li.textContent = sn;
-      ul.appendChild(li);
+    // 算法核心：按 SN 分组并统计最小/最大时间
+    const snMap = {};
+    logs.forEach(log => {
+        if (!snMap[log.sn]) {
+            snMap[log.sn] = { minTime: log.timestamp, maxTime: log.timestamp };
+        } else {
+            snMap[log.sn].minTime = Math.min(snMap[log.sn].minTime, log.timestamp);
+            snMap[log.sn].maxTime = Math.max(snMap[log.sn].maxTime, log.timestamp);
+        }
     });
-  }
-  
-  document.getElementById('resultArea').style.display = 'block';
-  showToast('数据拉取并统计完成');
-}
 
-// --- 模块 3：离线存储与云端同步 ---
-document.getElementById('btnReport').addEventListener('click', async () => {
-  const hospitalName = document.getElementById('hospitalName').value.trim();
-  const roomNumber = document.getElementById('roomNumber').value.trim();
-  
-  if (!hospitalName || !roomNumber) {
-    showToast('请先填写医院名称和手术间号');
-    return;
-  }
-  
-  if (currentValidCount === 0) {
-    showToast('当前无有效耗材可上报');
-    return;
-  }
-  
-  const reportData = {
-    hospitalName,
-    roomNumber,
-    validCount: currentValidCount,
-    validSnList: currentValidSnList,
-    timestamp: Date.now()
-  };
-  
-  if (navigator.onLine) {
-    // 设备在线，直接执行模拟上传
-    showToast('正在上报云端...');
-    await mockUpload(reportData);
-    showToast('上报云端成功！');
-    resetResult();
-  } else {
-    // 设备离线，拦截请求并保存至 IndexedDB
-    await saveToSyncQueue(reportData);
-    showToast('当前无网络，已暂存本地，网络恢复后将自动上报');
-    resetResult();
+    const now = Date.now();
+    const thirtyDaysMs = 30 * 24 * 60 * 60 * 1000;
+    const tenMinsMs = 10 * 60 * 1000;
     
-    // 尝试注册 Service Worker 的后台同步 (如果浏览器支持)
-    if ('serviceWorker' in navigator && 'SyncManager' in window) {
-      navigator.serviceWorker.ready.then(registration => {
-        registration.sync.register('sync-reports').catch(err => {
-          console.error('后台同步注册失败:', err);
-        });
-      });
+    currentValidSNs = [];
+    
+    // 筛选规则：最后一条减第一条 >= 10分钟 且 最后一条在最近30天内
+    for (const sn in snMap) {
+        const data = snMap[sn];
+        const timeDiff = data.maxTime - data.minTime;
+        const isRecent = (now - data.maxTime) <= thirtyDaysMs;
+        
+        if (timeDiff >= tenMinsMs && isRecent) {
+            currentValidSNs.push(sn);
+        }
     }
-  }
+
+    // 获取输入参数
+    const totalOrs = parseInt(document.getElementById('totalOrs').value) || 0;
+    const effectiveOrs = parseInt(document.getElementById('effectiveOrs').value) || 0;
+    
+    // 计算结果
+    const N = currentValidSNs.length; // 当前房间有效 SN 数量
+    const E = effectiveOrs;           // 有效使用间数
+    const estimatedTotal = N * E;     // 该医院 30 天总预估用量
+
+    // 更新 UI 展示
+    document.getElementById('resultArea').style.display = 'block';
+    document.getElementById('valN').innerText = N;
+    document.getElementById('valTotal').innerText = estimatedTotal;
+
+    // 渗透率分析计算
+    let penetration = 0;
+    if (totalOrs > 0) {
+        penetration = Math.min(100, Math.round((effectiveOrs / totalOrs) * 100));
+    }
+    document.getElementById('penetrationBar').style.width = penetration + '%';
+    document.getElementById('penetrationText').innerText = penetration + '%';
+
+    // 渲染 SN 列表明细
+    const listDiv = document.getElementById('snList');
+    listDiv.innerHTML = currentValidSNs.length > 0 
+        ? currentValidSNs.map(sn => `<div class="sn-item">✅ ${sn}</div>`).join('')
+        : '<div class="sn-item" style="color:var(--text-secondary)">暂无符合标准的 SN</div>';
+        
+    showToast('数据拉取与计算完成');
 });
 
-function resetResult() {
-  currentValidCount = 0;
-  currentValidSnList = [];
-  document.getElementById('resultArea').style.display = 'none';
-}
-
-// 模拟云端上传 API
-async function mockUpload(data) {
-  return new Promise(resolve => {
-    setTimeout(() => {
-      console.log('【云端接口】模拟上传成功:', data);
-      resolve();
-    }, 800);
-  });
-}
-
-// 监听网络状态恢复 ('online' 事件)
-// 当手术室恢复信号时，自动读取 IndexedDB 并上传
-window.addEventListener('online', async () => {
-  console.log('网络已恢复，检查是否有暂存数据需要上报...');
-  
-  try {
-    const queue = await getSyncQueue();
-    if (queue.length > 0) {
-      showToast('网络已恢复，正在同步离线数据...');
-      for (const item of queue) {
-        await mockUpload(item);
-        // 上传成功后清空对应本地记录
-        await clearSyncItem(item.id);
-        console.log(`暂存数据 (ID: ${item.id}) 上报成功并清除`);
-      }
-      showToast(`成功同步 ${queue.length} 条离线数据！`);
+// --- 模块 3：离线暂存与同步 ---
+function updateNetworkStatus() {
+    const statusEl = document.getElementById('networkStatus');
+    if (navigator.onLine) {
+        statusEl.innerText = '🟢 在线 (可同步)';
+        statusEl.style.color = '#34C759';
+        syncData(); // 连网时自动触发同步
+    } else {
+        statusEl.innerText = '🔴 离线 (数据将暂存)';
+        statusEl.style.color = '#FF3B30';
     }
-  } catch (error) {
-    console.error('同步离线数据失败:', error);
-  }
+}
+
+// 监听网络状态变化
+window.addEventListener('online', updateNetworkStatus);
+window.addEventListener('offline', updateNetworkStatus);
+updateNetworkStatus();
+updateQueueCount();
+
+document.getElementById('btnReport').addEventListener('click', async () => {
+    const hospitalName = document.getElementById('hospitalName').value.trim();
+    const totalOrs = document.getElementById('totalOrs').value;
+    const effectiveOrs = document.getElementById('effectiveOrs').value;
+    const roomNumber = document.getElementById('roomNumber').value.trim();
+    const estimatedTotal = document.getElementById('valTotal').innerText;
+
+    if (!hospitalName) return showToast('请填写医院名称');
+
+    // 组装上报数据包
+    const payload = {
+        id: Date.now().toString(), // 本地唯一ID
+        hospitalName,
+        totalOrs,
+        effectiveOrs,
+        roomNumber,
+        estimatedTotal,
+        validSNs: currentValidSNs,
+        timestamp: new Date().toISOString()
+    };
+
+    if (navigator.onLine) {
+        // 模拟在线上报
+        showToast('正在存储数据...');
+        setTimeout(() => showToast('✅ 存储成功！'), 1000);
+    } else {
+        // 无网时存入 IndexedDB 离线暂存
+        await saveToQueue(payload);
+        showToast('已离线暂存，连网后将自动同步');
+    }
 });
+
+// 自动同步队列中的数据
+async function syncData() {
+    const queue = await getQueue();
+    if (queue.length === 0) return;
+    
+    console.log(`开始同步 ${queue.length} 条离线数据...`);
+    for (const item of queue) {
+        // 模拟 API 请求耗时
+        await new Promise(res => setTimeout(res, 500)); 
+        console.log('同步成功:', item);
+        // 同步成功后从本地队列删除
+        await clearItem(item.id);
+    }
+    showToast('离线数据已自动同步完成');
+}

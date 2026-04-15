@@ -1,15 +1,15 @@
 {
-  "name": "巡检记录",
-  "short_name": "巡检记录",
-  "description": "手术室巡检记录与中继器配置工具",
-  "start_url": "/",
+  "name": "医疗耗材智能终端",
+  "short_name": "耗材终端",
+  "description": "手术室无网环境耗材统计与中继器配置工具",
+  "start_url": "/index.html",
   "display": "standalone",
-  "background_color": "#F2F2F7",
+  "background_color": "#ffffff",
   "theme_color": "#007AFF",
   "icons": [
     {
-      "src": "/icon.svg",
-      "sizes": "192x192 512x512",
+      "src": "icon.svg",
+      "sizes": "192x192",
       "type": "image/svg+xml"
     }
   ]
