@@ -186,6 +186,7 @@ function utf16to8(str) {
 document.getElementById('btnGenerateQR').addEventListener('click', (e) => {
   e.preventDefault(); 
   
+  // 收起软键盘
   document.getElementById('ssid').blur();
   document.getElementById('password').blur();
 
@@ -197,58 +198,42 @@ document.getElementById('btnGenerateQR').addEventListener('click', (e) => {
     return;
   }
   
+  // 拼接标准的 WiFi 二维码字符串
   const wifiString = `WIFI:T:WPA;S:${ssid};P:${password};;`;
   const container = document.getElementById('qrcode');
-  container.innerHTML = '<div style="text-align:center; color:var(--text-muted); padding: 20px;">正在生成二维码...</div>';
   
-  // 终极方案：双引擎生成 (优先使用云端 API，失败则降级使用本地 JS)
-  // 这样可以 100% 绕过 iOS 本地 JS 执行和 Canvas 渲染的各种诡异 Bug
-  const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(wifiString)}`;
+  // 清空之前的二维码
+  container.innerHTML = '';
   
-  const img = new Image();
-  img.crossOrigin = 'Anonymous';
-  
-  img.onload = () => {
-    container.innerHTML = '';
-    img.style.display = 'block';
-    img.style.margin = '0 auto';
-    img.style.width = '200px';
-    img.style.height = '200px';
-    img.style.borderRadius = '8px';
-    container.appendChild(img);
-    showToast('二维码生成成功');
-  };
-  
-  img.onerror = () => {
-    console.warn('云端生成失败，尝试使用本地离线引擎...');
-    try {
-      if (typeof qrcode !== 'undefined') {
-        const qr = qrcode(0, 'H'); 
-        qr.addData(utf16to8(wifiString));
-        qr.make();
-        container.innerHTML = qr.createImgTag(6, 2);
-        
-        const localImg = container.querySelector('img');
-        if (localImg) {
-          localImg.style.display = 'block';
-          localImg.style.margin = '0 auto';
-          localImg.style.maxWidth = '100%';
-          localImg.style.height = 'auto';
-        }
-        showToast('已使用离线引擎生成二维码');
-      } else {
-        container.innerHTML = '<div style="color:red; text-align:center; padding: 20px;">生成失败，请检查网络</div>';
-        showToast('二维码组件加载失败');
-      }
-    } catch (err) {
-      console.error('本地生成也失败:', err);
-      container.innerHTML = `<div style="color:red; text-align:center; padding: 20px;">生成异常: ${err.message}</div>`;
-      showToast('生成异常，请重试');
+  try {
+    // 调用 QRCode.js 纯本地离线生成
+    new QRCode(container, {
+      text: wifiString,
+      width: 200,
+      height: 200,
+      colorDark : "#000000",
+      colorLight : "#ffffff",
+      correctLevel : QRCode.CorrectLevel.H // 高容错率，确保中继器容易扫码
+    });
+    
+    // 居中显示优化
+    const qrImage = container.querySelector('img');
+    const qrCanvas = container.querySelector('canvas');
+    if (qrImage) {
+      qrImage.style.margin = "0 auto";
+      qrImage.style.borderRadius = "8px";
     }
-  };
-  
-  // 触发图片加载
-  img.src = qrUrl;
+    if (qrCanvas) {
+      qrCanvas.style.margin = "0 auto";
+      qrCanvas.style.borderRadius = "8px";
+    }
+
+    showToast('二维码已生成 (纯离线)');
+  } catch (err) {
+    console.error('二维码生成失败:', err);
+    container.innerHTML = `<div style="color:red; text-align:center; padding: 20px;">生成失败: 请检查网络库是否加载</div>`;
+    showToast('二维码组件初始化失败');
+  }
 });
 
 // 紧急修复：清除 PWA 缓存
