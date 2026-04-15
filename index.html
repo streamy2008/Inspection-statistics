@@ -263,7 +263,13 @@
           <label>热点密码</label>
           <input type="text" id="password" placeholder="请输入热点密码">
         </div>
-        <button id="btnGenerateQR" class="btn btn-outline">生成中继器配网码</button>
+        <div style="display: flex; gap: 12px; margin-bottom: 16px;">
+          <button id="btnScanQR" class="btn btn-outline" style="flex: 1; display: flex; align-items: center; justify-content: center; gap: 6px; padding: 12px 0;">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7V5a2 2 0 0 1 2-2h2"></path><path d="M17 3h2a2 2 0 0 1 2 2v2"></path><path d="M21 17v2a2 2 0 0 1-2 2h-2"></path><path d="M7 21H5a2 2 0 0 1-2-2v-2"></path><rect x="7" y="7" width="10" height="10" rx="1"></rect></svg>
+            扫码识别
+          </button>
+          <button id="btnGenerateQR" class="btn btn-primary" style="flex: 2; padding: 12px 0;">生成中继器配网码</button>
+        </div>
         <div id="qrcode"></div>
       </div>
     </div>
@@ -304,10 +310,21 @@
 
   <div id="toast" class="toast">提示信息</div>
 
+  <!-- 扫码模态框 -->
+  <div id="scannerModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); z-index: 9999; flex-direction: column; align-items: center; justify-content: center;">
+    <div style="width: 90%; max-width: 400px; background: #fff; border-radius: 16px; overflow: hidden; position: relative;">
+      <div id="reader" style="width: 100%;"></div>
+      <button id="btnCloseScanner" style="position: absolute; top: 10px; right: 10px; background: rgba(0,0,0,0.6); color: white; border: none; border-radius: 50%; width: 36px; height: 36px; font-size: 20px; cursor: pointer; display: flex; align-items: center; justify-content: center;">&times;</button>
+    </div>
+    <p style="color: white; margin-top: 20px; font-size: 16px;">请将二维码放入框内</p>
+  </div>
+
+  <!-- 引入 html5-qrcode 库用于扫码 -->
+  <script src="https://unpkg.com/html5-qrcode"></script>
   <!-- 引入极其稳定的 qrcode-generator 库 (纯图片输出，无 Canvas 兼容问题) -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
   <!-- 引入主逻辑脚本，增加版本号强制刷新 -->
-  <script src="/app.js?v=6"></script>
+  <script src="/app.js?v=7"></script>
 </body>
 </html>
 

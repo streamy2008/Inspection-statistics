@@ -84,7 +84,74 @@ function showToast(message) {
   }, 3000);
 }
 
-// --- 模块 1：生成配网二维码 ---
+// --- 模块 1：生成配网二维码 & 扫码识别 ---
+
+// 扫码识别逻辑
+let html5QrCode;
+
+document.getElementById('btnScanQR').addEventListener('click', async (e) => {
+  e.preventDefault();
+  
+  if (typeof Html5Qrcode === 'undefined') {
+    showToast('扫码组件加载中，请稍候再试');
+    return;
+  }
+
+  const scannerModal = document.getElementById('scannerModal');
+  scannerModal.style.display = 'flex';
+
+  if (!html5QrCode) {
+    html5QrCode = new Html5Qrcode("reader");
+  }
+
+  const qrCodeSuccessCallback = (decodedText, decodedResult) => {
+    console.log(`Scan result: ${decodedText}`);
+    
+    // 解析标准的 WIFI 二维码格式: WIFI:T:WPA;S:MySSID;P:MyPass;;
+    if (decodedText.toUpperCase().startsWith('WIFI:')) {
+      // 提取 SSID
+      const ssidMatch = decodedText.match(/S:([^;]+);/);
+      // 提取 Password
+      const passMatch = decodedText.match(/P:([^;]+);/);
+      
+      if (ssidMatch && ssidMatch[1]) {
+        document.getElementById('ssid').value = ssidMatch[1];
+      }
+      if (passMatch && passMatch[1]) {
+        document.getElementById('password').value = passMatch[1];
+      } else {
+        document.getElementById('password').value = ''; // 如果没有密码则清空
+      }
+      
+      showToast('扫码成功，已自动填充');
+    } else {
+      showToast('未识别到标准的WiFi二维码格式');
+    }
+    
+    stopScanner();
+  };
+
+  const config = { fps: 10, qrbox: { width: 250, height: 250 } };
+
+  try {
+    // 优先使用后置摄像头
+    await html5QrCode.start({ facingMode: "environment" }, config, qrCodeSuccessCallback);
+  } catch (err) {
+    console.error("启动相机失败:", err);
+    showToast('无法启动相机，请检查浏览器权限设置');
+    stopScanner();
+  }
+});
+
+document.getElementById('btnCloseScanner').addEventListener('click', stopScanner);
+
+function stopScanner() {
+  const scannerModal = document.getElementById('scannerModal');
+  scannerModal.style.display = 'none';
+  if (html5QrCode && html5QrCode.isScanning) {
+    html5QrCode.stop().catch(err => console.error("停止相机失败", err));
+  }
+}
 
 // 解决中文乱码问题
 function utf16to8(str) {
