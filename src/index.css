@@ -1,0 +1,42 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+}
+
+:root {
+  --primary: #007AFF;
+  --primary-light: #E5F1FF;
+  --bg: #F0F7FF;
+  --card-bg: rgba(255, 255, 255, 0.9);
+  --text: #1C1C1E;
+  --text-secondary: #4A4A4E;
+}
+
+body {
+  font-family: var(--font-sans);
+  background-color: var(--bg);
+  color: var(--text);
+  margin: 0;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Glassmorphism utility */
+.glass-card {
+  background: var(--card-bg);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+}
+
+/* Hide scrollbar but keep functionality */
+::-webkit-scrollbar {
+  width: 0px;
+  background: transparent;
+}
+
+/* Toast animation */
+.toast-enter {
+  opacity: 1 !important;
+  transform: translate(-50%, 0) !important;
+}
