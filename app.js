@@ -83,7 +83,28 @@ function showToast(message) {
 }
 
 // --- 模块 1：生成配网二维码 ---
-document.getElementById('btnGenerateQR').addEventListener('click', () => {
+
+// 解决 qrcode.js 不支持中文（如中文热点名）的问题
+function utf16to8(str) {
+  let out = "";
+  for (let i = 0; i < str.length; i++) {
+    let c = str.charCodeAt(i);
+    if ((c >= 0x0001) && (c <= 0x007F)) {
+      out += str.charAt(i);
+    } else if (c > 0x07FF) {
+      out += String.fromCharCode(0xE0 | ((c >> 12) & 0x0F));
+      out += String.fromCharCode(0x80 | ((c >>  6) & 0x3F));
+      out += String.fromCharCode(0x80 | ((c >>  0) & 0x3F));
+    } else {
+      out += String.fromCharCode(0xC0 | ((c >>  6) & 0x1F));
+      out += String.fromCharCode(0x80 | ((c >>  0) & 0x3F));
+    }
+  }
+  return out;
+}
+
+document.getElementById('btnGenerateQR').addEventListener('click', (e) => {
+  e.preventDefault(); // 防止某些情况下的默认行为
   const ssid = document.getElementById('ssid').value.trim();
   const password = document.getElementById('password').value.trim();
   
@@ -98,17 +119,22 @@ document.getElementById('btnGenerateQR').addEventListener('click', () => {
   const qrcodeContainer = document.getElementById('qrcode');
   qrcodeContainer.innerHTML = ''; // 清空旧二维码
   
-  // 使用 qrcode.js 生成二维码
-  new QRCode(qrcodeContainer, {
-    text: wifiString,
-    width: 200,
-    height: 200,
-    colorDark : "#000000",
-    colorLight : "#ffffff",
-    correctLevel : QRCode.CorrectLevel.H
-  });
-  
-  showToast('二维码生成成功，请使用中继器扫描');
+  try {
+    // 使用 qrcode.js 生成二维码，将字符串转换为 UTF-8 字节流
+    new QRCode(qrcodeContainer, {
+      text: utf16to8(wifiString),
+      width: 200,
+      height: 200,
+      colorDark : "#000000",
+      colorLight : "#ffffff",
+      correctLevel : QRCode.CorrectLevel.H
+    });
+    
+    showToast('二维码生成成功，请使用中继器扫描');
+  } catch (err) {
+    console.error('二维码生成失败:', err);
+    showToast('二维码生成失败，请检查输入内容');
+  }
 });
 
 // --- 模块 2：模拟设备日志拉取与核心计费算法 ---

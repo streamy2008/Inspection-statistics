@@ -1,6 +1,6 @@
 // sw.js
 
-const CACHE_NAME = 'medical-app-cache-v1';
+const CACHE_NAME = 'medical-app-cache-v2';
 const URLS_TO_CACHE = [
   '/',
   '/index.html',
