@@ -264,7 +264,9 @@
           <input type="text" id="password" placeholder="请输入热点密码">
         </div>
         <button id="btnGenerateQR" class="btn btn-outline">生成中继器配网码</button>
-        <div id="qrcode"></div>
+        <div id="qrcode">
+            <canvas id="qrcodeCanvas"></canvas>
+        </div>
       </div>
     </div>
 
@@ -301,10 +303,10 @@
 
   <div id="toast" class="toast">提示信息</div>
 
-  <!-- 引入 qrcode.js 用于生成二维码 (更换为更稳定的 cdnjs) -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
-  <!-- 引入主逻辑脚本 -->
-  <script src="/app.js"></script>
+  <!-- 引入现代化的 qrcode 库，原生支持中文 UTF-8，兼容性极佳 -->
+  <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
+  <!-- 引入主逻辑脚本，增加版本号强制刷新 -->
+  <script src="/app.js?v=4"></script>
 </body>
 </html>
 

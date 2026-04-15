@@ -84,27 +84,6 @@ function showToast(message) {
 
 // --- 模块 1：生成配网二维码 ---
 
-let qrCodeInstance = null;
-
-// 解决 qrcode.js 不支持中文（如中文热点名）的问题
-function utf16to8(str) {
-  let out = "";
-  for (let i = 0; i < str.length; i++) {
-    let c = str.charCodeAt(i);
-    if ((c >= 0x0001) && (c <= 0x007F)) {
-      out += str.charAt(i);
-    } else if (c > 0x07FF) {
-      out += String.fromCharCode(0xE0 | ((c >> 12) & 0x0F));
-      out += String.fromCharCode(0x80 | ((c >>  6) & 0x3F));
-      out += String.fromCharCode(0x80 | ((c >>  0) & 0x3F));
-    } else {
-      out += String.fromCharCode(0xC0 | ((c >>  6) & 0x1F));
-      out += String.fromCharCode(0x80 | ((c >>  0) & 0x3F));
-    }
-  }
-  return out;
-}
-
 document.getElementById('btnGenerateQR').addEventListener('click', (e) => {
   e.preventDefault(); // 防止某些情况下的默认行为
   
@@ -127,34 +106,24 @@ document.getElementById('btnGenerateQR').addEventListener('click', (e) => {
   
   // 标准 WiFi 二维码格式: WIFI:T:WPA;S:网名;P:密码;;
   const wifiString = `WIFI:T:WPA;S:${ssid};P:${password};;`;
+  const canvas = document.getElementById('qrcodeCanvas');
   
-  try {
-    if (!qrCodeInstance) {
-      // 首次生成
-      const qrcodeContainer = document.getElementById('qrcode');
-      qrcodeContainer.innerHTML = ''; 
-      qrCodeInstance = new QRCode(qrcodeContainer, {
-        text: utf16to8(wifiString),
-        width: 200,
-        height: 200,
-        colorDark : "#000000",
-        colorLight : "#ffffff",
-        correctLevel : QRCode.CorrectLevel.H
-      });
-    } else {
-      // 后续更新：使用内置的 clear 和 makeCode 方法，避免频繁操作 DOM 导致移动端浏览器崩溃
-      qrCodeInstance.clear();
-      qrCodeInstance.makeCode(utf16to8(wifiString));
+  // 使用现代化的 qrcode 库生成二维码 (原生支持 UTF-8 中文)
+  QRCode.toCanvas(canvas, wifiString, {
+    width: 200,
+    margin: 2,
+    color: {
+      dark: "#000000",
+      light: "#ffffff"
     }
-    
-    showToast('二维码生成成功，请使用中继器扫描');
-  } catch (err) {
-    console.error('二维码生成失败:', err);
-    showToast('二维码生成失败，请检查输入内容');
-    // 发生异常时重置实例，以便下次可以重新初始化
-    qrCodeInstance = null;
-    document.getElementById('qrcode').innerHTML = '';
-  }
+  }, function (error) {
+    if (error) {
+      console.error('二维码生成失败:', error);
+      showToast('二维码生成失败，请检查输入内容');
+    } else {
+      showToast('二维码生成成功，请使用中继器扫描');
+    }
+  });
 });
 
 // --- 模块 2：模拟设备日志拉取与核心计费算法 ---

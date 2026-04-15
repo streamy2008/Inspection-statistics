@@ -1,13 +1,13 @@
 // sw.js
 
-const CACHE_NAME = 'medical-app-cache-v3';
+const CACHE_NAME = 'medical-app-cache-v4';
 const URLS_TO_CACHE = [
   '/',
   '/index.html',
-  '/app.js',
+  '/app.js?v=4',
   '/manifest.json',
   '/icon.svg',
-  'https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js'
+  'https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js'
 ];
 
 // 1. 安装阶段：缓存静态资源，实现离线访问
@@ -39,13 +39,25 @@ self.addEventListener('activate', event => {
   self.clients.claim();
 });
 
-// 3. 拦截网络请求：优先使用缓存 (Cache First 策略)
+// 3. 拦截网络请求：改为 Network First (网络优先) 策略，彻底解决 PWA 缓存不更新的问题
 self.addEventListener('fetch', event => {
+  if (event.request.method !== 'GET' || !event.request.url.startsWith('http')) {
+    return;
+  }
+
   event.respondWith(
-    caches.match(event.request)
+    fetch(event.request)
       .then(response => {
-        // 如果命中缓存，直接返回缓存；否则发起网络请求
-        return response || fetch(event.request);
+        // 网络请求成功，将最新结果存入缓存
+        const resClone = response.clone();
+        caches.open(CACHE_NAME).then(cache => {
+          cache.put(event.request, resClone);
+        });
+        return response;
+      })
+      .catch(() => {
+        // 网络请求失败（离线状态），降级使用缓存
+        return caches.match(event.request);
       })
   );
 });
