@@ -84,6 +84,8 @@ function showToast(message) {
 
 // --- 模块 1：生成配网二维码 ---
 
+let qrCodeInstance = null;
+
 // 解决 qrcode.js 不支持中文（如中文热点名）的问题
 function utf16to8(str) {
   let out = "";
@@ -105,6 +107,16 @@ function utf16to8(str) {
 
 document.getElementById('btnGenerateQR').addEventListener('click', (e) => {
   e.preventDefault(); // 防止某些情况下的默认行为
+  
+  // 移动端优化：点击生成按钮时主动收起软键盘，防止键盘遮挡二维码
+  document.getElementById('ssid').blur();
+  document.getElementById('password').blur();
+
+  if (typeof QRCode === 'undefined') {
+    showToast('二维码组件库正在加载，请稍候再试或刷新页面');
+    return;
+  }
+
   const ssid = document.getElementById('ssid').value.trim();
   const password = document.getElementById('password').value.trim();
   
@@ -116,24 +128,32 @@ document.getElementById('btnGenerateQR').addEventListener('click', (e) => {
   // 标准 WiFi 二维码格式: WIFI:T:WPA;S:网名;P:密码;;
   const wifiString = `WIFI:T:WPA;S:${ssid};P:${password};;`;
   
-  const qrcodeContainer = document.getElementById('qrcode');
-  qrcodeContainer.innerHTML = ''; // 清空旧二维码
-  
   try {
-    // 使用 qrcode.js 生成二维码，将字符串转换为 UTF-8 字节流
-    new QRCode(qrcodeContainer, {
-      text: utf16to8(wifiString),
-      width: 200,
-      height: 200,
-      colorDark : "#000000",
-      colorLight : "#ffffff",
-      correctLevel : QRCode.CorrectLevel.H
-    });
+    if (!qrCodeInstance) {
+      // 首次生成
+      const qrcodeContainer = document.getElementById('qrcode');
+      qrcodeContainer.innerHTML = ''; 
+      qrCodeInstance = new QRCode(qrcodeContainer, {
+        text: utf16to8(wifiString),
+        width: 200,
+        height: 200,
+        colorDark : "#000000",
+        colorLight : "#ffffff",
+        correctLevel : QRCode.CorrectLevel.H
+      });
+    } else {
+      // 后续更新：使用内置的 clear 和 makeCode 方法，避免频繁操作 DOM 导致移动端浏览器崩溃
+      qrCodeInstance.clear();
+      qrCodeInstance.makeCode(utf16to8(wifiString));
+    }
     
     showToast('二维码生成成功，请使用中继器扫描');
   } catch (err) {
     console.error('二维码生成失败:', err);
     showToast('二维码生成失败，请检查输入内容');
+    // 发生异常时重置实例，以便下次可以重新初始化
+    qrCodeInstance = null;
+    document.getElementById('qrcode').innerHTML = '';
   }
 });
 
