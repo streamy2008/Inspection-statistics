@@ -170,7 +170,7 @@ const WifiConfig: React.FC = () => {
           {/* Generate Button */}
           <button
             onClick={handleGenerate}
-            className="w-full bg-gray-900 hover:bg-gray-800 text-white font-semibold py-4 px-4 rounded-2xl shadow-lg shadow-gray-900/20 transition-all duration-200 active:scale-[0.98] mt-6"
+            className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-4 px-4 rounded-2xl shadow-lg shadow-blue-600/20 transition-all duration-200 active:scale-[0.98] mt-6"
           >
             生成二维码
           </button>

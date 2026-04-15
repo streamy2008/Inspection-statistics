@@ -290,7 +290,7 @@ const App: React.FC = () => {
           <h2 className="text-xl font-extrabold text-gray-900 tracking-tight mb-6">巡检记录</h2>
           <button 
             onClick={handleFetchData}
-            className="w-full bg-gray-900 hover:bg-gray-800 text-white font-semibold py-4 px-4 rounded-2xl shadow-lg shadow-gray-900/20 transition-all duration-200 active:scale-[0.98] mb-8"
+            className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-4 px-4 rounded-2xl shadow-lg shadow-blue-600/20 transition-all duration-200 active:scale-[0.98] mb-8"
           >
             拉取设备数据
           </button>
