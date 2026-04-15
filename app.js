@@ -1,17 +1,19 @@
 // app.js
 
 // ==========================================
-// 1. Service Worker 注册 (PWA 离线支持)
+// 0. 强制注销 Service Worker (破坏 PWA 缓存陷阱)
 // ==========================================
 if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/sw.js')
-      .then(registration => {
-        console.log('ServiceWorker 注册成功, scope:', registration.scope);
-      })
-      .catch(error => {
-        console.error('ServiceWorker 注册失败:', error);
-      });
+  navigator.serviceWorker.getRegistrations().then(function(registrations) {
+    for(let registration of registrations) {
+      registration.unregister();
+      console.log('ServiceWorker 已强制注销');
+    }
+  });
+}
+if ('caches' in window) {
+  caches.keys().then(keys => {
+    keys.forEach(key => caches.delete(key));
   });
 }
 
@@ -109,8 +111,8 @@ document.getElementById('btnGenerateQR').addEventListener('click', (e) => {
   document.getElementById('ssid').blur();
   document.getElementById('password').blur();
 
-  if (typeof QRious === 'undefined') {
-    showToast('组件加载失败，请点击底部"修复异常"');
+  if (typeof qrcode === 'undefined') {
+    showToast('组件加载失败，请检查网络或点击底部"修复异常"');
     return;
   }
 
@@ -123,18 +125,28 @@ document.getElementById('btnGenerateQR').addEventListener('click', (e) => {
   }
   
   const wifiString = `WIFI:T:WPA;S:${ssid};P:${password};;`;
-  
   const container = document.getElementById('qrcode');
-  container.innerHTML = '<canvas id="qrcodeCanvas"></canvas>';
-  const canvas = document.getElementById('qrcodeCanvas');
+  container.innerHTML = ''; // 清空
   
   try {
-    new QRious({
-      element: canvas,
-      value: utf16to8(wifiString),
-      size: 200,
-      level: 'H'
-    });
+    // 使用 qrcode-generator 生成纯 Base64 图片，彻底绕过 iOS Canvas 兼容性问题
+    const qr = qrcode(0, 'H'); // 0 = 自动计算大小, H = 最高容错率
+    qr.addData(utf16to8(wifiString));
+    qr.make();
+    
+    // 生成 img 标签 (模块大小: 6, 边距: 2)
+    container.innerHTML = qr.createImgTag(6, 2);
+    
+    // 调整生成的图片样式以适应容器
+    const imgElement = container.querySelector('img');
+    if (imgElement) {
+      imgElement.style.display = 'block';
+      imgElement.style.margin = '0 auto';
+      imgElement.style.maxWidth = '100%';
+      imgElement.style.height = 'auto';
+      imgElement.style.borderRadius = '4px';
+    }
+
     showToast('二维码生成成功，请使用中继器扫描');
   } catch (err) {
     console.error('二维码生成失败:', err);
