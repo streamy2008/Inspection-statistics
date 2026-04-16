@@ -9,6 +9,7 @@ const STORE_NAME = 'syncQueue';
 const App: React.FC = () => {
   // State for Hospital Overview
   const [hospitalName, setHospitalName] = useState('');
+  const [inspectorName, setInspectorName] = useState('');
   const [totalOrs, setTotalOrs] = useState('');
   const [effectiveOrs, setEffectiveOrs] = useState('');
   const [roomNumber, setRoomNumber] = useState('');
@@ -178,6 +179,7 @@ const App: React.FC = () => {
     const payload = {
       id: Date.now().toString(),
       hospitalName,
+      inspectorName,
       totalOrs,
       effectiveOrs,
       roomNumber,
@@ -242,6 +244,16 @@ const App: React.FC = () => {
                 className="w-full px-4 py-3.5 bg-gray-50/80 border border-gray-100 rounded-2xl text-gray-900 placeholder-gray-300 focus:bg-white focus:ring-4 focus:ring-blue-500/10 focus:border-blue-400 outline-none transition-all duration-200 text-base font-medium"
               />
             </div>
+            <div>
+              <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-2">巡检记录人 (必填)</label>
+              <input 
+                type="text" 
+                value={inspectorName}
+                onChange={(e) => setInspectorName(e.target.value)}
+                placeholder="请输入您的姓名" 
+                className="w-full px-4 py-3.5 bg-gray-50/80 border border-gray-100 rounded-2xl text-gray-900 placeholder-gray-300 focus:bg-white focus:ring-4 focus:ring-blue-500/10 focus:border-blue-400 outline-none transition-all duration-200 text-base font-medium"
+              />
+            </div>
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-2">手术间总数</label>
@@ -265,7 +277,7 @@ const App: React.FC = () => {
               </div>
             </div>
             <div>
-              <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-2">当前采集房间号</label>
+              <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-2">当前术间号</label>
               <input 
                 type="text" 
                 value={roomNumber}
@@ -305,11 +317,11 @@ const App: React.FC = () => {
                 <div className="grid grid-cols-2 gap-4">
                   <div className="bg-gray-50/80 rounded-2xl p-5 text-center border border-gray-100">
                     <div className="text-3xl font-extrabold text-blue-600 mb-1">{currentValidSNs.length}</div>
-                    <div className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">当前房间有效 SN</div>
+                    <div className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">当前术间有效 SN</div>
                   </div>
                   <div className="bg-gray-50/80 rounded-2xl p-5 text-center border border-gray-100">
                     <div className="text-3xl font-extrabold text-blue-600 mb-1">{estimatedTotal}</div>
-                    <div className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">30天预估用量</div>
+                    <div className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">30天有效 SN 数量</div>
                   </div>
                 </div>
                 
